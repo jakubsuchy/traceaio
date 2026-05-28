@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
-import { AreaChart, Area, Line, XAxis, YAxis, CartesianGrid } from "recharts";
+import { ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid } from "recharts";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getModelColor } from "@shared/models";
 
@@ -113,7 +113,7 @@ export function DomainTrendChart({ domain, model, runId, onSelectRun }: Props) {
   return (
     <div className="p-4">
       <ChartContainer config={chartConfig} className="h-[220px] w-full">
-        <AreaChart
+        <ComposedChart
           data={chartData}
           margin={{ top: 5, right: 10, left: 0, bottom: 0 }}
           onClick={handleChartClick}
@@ -157,7 +157,7 @@ export function DomainTrendChart({ domain, model, runId, onSelectRun }: Props) {
               isAnimationActive={false}
             />
           )}
-        </AreaChart>
+        </ComposedChart>
       </ChartContainer>
     </div>
   );
