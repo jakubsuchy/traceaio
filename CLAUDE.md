@@ -82,7 +82,7 @@ n8n-nodes-traceaio/         # n8n community node package (standalone npm package
 browser-actor/              # Apify actor for browser-based prompt execution (gitignored)
 ```
 
-## API Routes (87 total)
+## API Routes (88 total)
 
 ```
 AUTH (12)        server/routes/auth.ts
@@ -112,8 +112,9 @@ COMPETITORS (10) server/routes/competitors.ts
   PATCH     /api/competitors/:id
   DELETE    /api/competitors/:id
 
-SOURCES (5)     server/routes/sources.ts
-  GET       /api/sources, /api/sources/analysis, /api/sources/:domain/responses
+SOURCES (6)     server/routes/sources.ts
+  GET       /api/sources, /api/sources/analysis, /api/sources/:domain/responses,
+            /api/sources/:domain/trends
   POST      /api/sources/reclassify, /api/sources/extract-sitemap
 
 PAGES (3)       server/routes/pages.ts

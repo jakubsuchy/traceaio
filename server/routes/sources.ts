@@ -310,6 +310,89 @@ export function registerSourceRoutes(app: Express) {
     }
   });
 
+  // Trend: how often this domain is cited per analysis run (overall + by model)
+  app.get("/api/sources/:domain/trends", async (req, res) => {
+    // #swagger.tags = ['Sources']
+    try {
+      const domain = req.params.domain;
+      const { from, to } = parseDateRange(req);
+      const model = req.query.model as string | undefined;
+
+      const source = await storage.getSourceByDomain(domain);
+      if (!source) {
+        return res.json({ runs: [], modelLabels: {} });
+      }
+
+      const allRuns = await storage.getAnalysisRuns(from, to);
+      const completedRuns = allRuns.filter(r => r.status === 'complete');
+      if (completedRuns.length === 0) {
+        return res.json({ runs: [], modelLabels: {} });
+      }
+
+      const { MODEL_META } = await import('@shared/models');
+      const defaultLabels: Record<string, string> = Object.fromEntries(Object.entries(MODEL_META).map(([k, v]) => [k, v.label]));
+      const modelsConfigRaw = await storage.getSetting('modelsConfig');
+      const modelsConfig = modelsConfigRaw ? JSON.parse(modelsConfigRaw) : {};
+
+      const { db: database } = await import("../db");
+      const { sourceUrls: sourceUrlsTable } = await import("@shared/schema");
+      const { and, inArray, eq: eqOp } = await import("drizzle-orm");
+
+      const runIds = completedRuns.map(r => r.id);
+      const where = model
+        ? and(eqOp(sourceUrlsTable.sourceId, source.id), inArray(sourceUrlsTable.analysisRunId, runIds), eqOp(sourceUrlsTable.model, model))
+        : and(eqOp(sourceUrlsTable.sourceId, source.id), inArray(sourceUrlsTable.analysisRunId, runIds));
+      const rows = await database
+        .select({ analysisRunId: sourceUrlsTable.analysisRunId, model: sourceUrlsTable.model, url: sourceUrlsTable.url })
+        .from(sourceUrlsTable)
+        .where(where);
+
+      // Group by run, then by model. Dedupe URLs to match the unique-URL
+      // semantics used in /api/sources/analysis (urls.length there is deduped).
+      const perRun = new Map<number, { total: Set<string>; byModel: Map<string, Set<string>> }>();
+      for (const r of rows) {
+        if (r.analysisRunId == null) continue;
+        let bucket = perRun.get(r.analysisRunId);
+        if (!bucket) { bucket = { total: new Set(), byModel: new Map() }; perRun.set(r.analysisRunId, bucket); }
+        bucket.total.add(r.url);
+        const m = r.model || 'unknown';
+        if (!bucket.byModel.has(m)) bucket.byModel.set(m, new Set());
+        bucket.byModel.get(m)!.add(r.url);
+      }
+
+      const runs = completedRuns.map(run => {
+        const bucket = perRun.get(run.id);
+        const modelCitations: Record<string, number> = {};
+        if (bucket) {
+          for (const [m, urls] of bucket.byModel.entries()) modelCitations[m] = urls.size;
+        }
+        return {
+          runId: run.id,
+          date: run.completedAt || run.startedAt,
+          totalCitations: bucket ? bucket.total.size : 0,
+          modelCitations,
+        };
+      });
+
+      // Oldest first for charting (getAnalysisRuns returns newest first)
+      runs.reverse();
+
+      const modelLabels: Record<string, string> = {};
+      for (const r of runs) {
+        for (const m of Object.keys(r.modelCitations)) {
+          if (!modelLabels[m]) {
+            modelLabels[m] = modelsConfig[m]?.label || defaultLabels[m] || m;
+          }
+        }
+      }
+
+      res.json({ runs, modelLabels });
+    } catch (error) {
+      console.error("Error fetching domain trends:", error);
+      res.status(500).json({ error: "Failed to fetch domain trends" });
+    }
+  });
+
   // Get responses that cite a specific domain
   app.get("/api/sources/:domain/responses", async (req, res) => {
     // #swagger.tags = ['Sources']

@@ -10,10 +10,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Search, ExternalLink, Download, MessageSquare, FileText, ChevronDown, ChevronUp, ArrowRightLeft } from "lucide-react";
+import { Search, ExternalLink, Download, MessageSquare, FileText, ChevronDown, ChevronUp, ArrowRightLeft, TrendingUp } from "lucide-react";
 import type { SourceAnalysis, Topic } from "@shared/schema";
 import { WatchlistTab } from "@/components/sources/watchlist-tab";
 import { PagesTab } from "@/components/sources/pages-tab";
+import { DomainTrendChart } from "@/components/sources/domain-trend-chart";
 import { safeHttpHref } from "@/lib/safe-url";
 
 const SOURCE_TABS = ['domains', 'pages', 'watchlist'] as const;
@@ -74,7 +75,7 @@ export default function SourcesPage() {
   const [selectedTopic, setSelectedTopic] = useState<string>('all');
   const [selectedModel, setSelectedModel] = useState<string>('all');
   const [expandedDomain, setExpandedDomain] = useState<string | null>(null);
-  const [expandedView, setExpandedView] = useState<'prompts' | 'pages' | null>(null);
+  const [expandedView, setExpandedView] = useState<'prompts' | 'pages' | 'trends' | null>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -418,6 +419,17 @@ export default function SourcesPage() {
                           <FileText className="h-3 w-3 inline mr-1 -mt-0.5" />
                           Pages ({domain.urls.length})
                         </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setExpandedView('trends'); }}
+                          className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                            expandedView === 'trends'
+                              ? 'bg-blue-100 text-blue-700'
+                              : 'bg-gray-100 text-gray-500'
+                          }`}
+                        >
+                          <TrendingUp className="h-3 w-3 inline mr-1 -mt-0.5" />
+                          Trends
+                        </button>
                         <div className="flex items-center gap-2 ml-auto">
                           <span className="text-xs text-gray-400">Mark as:</span>
                           {domain.sourceType !== 'brand' && (
@@ -454,6 +466,14 @@ export default function SourcesPage() {
                       )}
                       {expandedView === 'pages' && (
                         <DomainPages urls={domain.urls} domain={domain.domain} onShowPageDetail={showPageDetail} />
+                      )}
+                      {expandedView === 'trends' && (
+                        <DomainTrendChart
+                          domain={domain.domain}
+                          runId={selectedRun !== 'all' ? selectedRun : undefined}
+                          model={selectedModel !== 'all' ? selectedModel : undefined}
+                          onSelectRun={(id) => setSelectedRun(id)}
+                        />
                       )}
                     </div>
                   )}
@@ -566,6 +586,17 @@ export default function SourcesPage() {
                                   <FileText className="h-3 w-3 inline mr-1.5 -mt-0.5" />
                                   Pages ({domain.urls.length})
                                 </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setExpandedView('trends'); }}
+                                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                                    expandedView === 'trends'
+                                      ? 'border-blue-600 text-blue-600'
+                                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                                  }`}
+                                >
+                                  <TrendingUp className="h-3 w-3 inline mr-1.5 -mt-0.5" />
+                                  Trends
+                                </button>
                                 <div className="ml-auto pr-3 flex items-center gap-2">
                                   <span className="text-xs text-gray-400">Mark as:</span>
                                   {domain.sourceType !== 'brand' && (
@@ -603,6 +634,14 @@ export default function SourcesPage() {
                             )}
                             {expandedView === 'pages' && (
                               <DomainPages urls={domain.urls} domain={domain.domain} onShowPageDetail={showPageDetail} />
+                            )}
+                            {expandedView === 'trends' && (
+                              <DomainTrendChart
+                                domain={domain.domain}
+                                runId={selectedRun !== 'all' ? selectedRun : undefined}
+                                model={selectedModel !== 'all' ? selectedModel : undefined}
+                                onSelectRun={(id) => setSelectedRun(id)}
+                              />
                             )}
                           </TableCell>
                         </TableRow>
