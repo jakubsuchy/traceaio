@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
+import { AreaChart, Area, Line, XAxis, YAxis, CartesianGrid } from "recharts";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getModelColor } from "@shared/models";
 
@@ -64,16 +64,38 @@ export function DomainTrendChart({ domain, model, runId, onSelectRun }: Props) {
   }
   const modelKeys = Array.from(allModelKeys);
 
-  const chartData = data.runs.map(run => ({
+  // Least-squares linear regression on (index, totalCitations). Skip when
+  // there are fewer than 2 points — a slope through one point is undefined.
+  const ys = data.runs.map(r => r.totalCitations);
+  const n = ys.length;
+  let trendOf: (i: number) => number | undefined = () => undefined;
+  if (n >= 2) {
+    const meanX = (n - 1) / 2;
+    const meanY = ys.reduce((a, b) => a + b, 0) / n;
+    let num = 0;
+    let den = 0;
+    for (let i = 0; i < n; i++) {
+      num += (i - meanX) * (ys[i] - meanY);
+      den += (i - meanX) * (i - meanX);
+    }
+    const slope = den === 0 ? 0 : num / den;
+    const intercept = meanY - slope * meanX;
+    trendOf = (i: number) => slope * i + intercept;
+  }
+
+  const chartData = data.runs.map((run, i) => ({
     date: new Date(run.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
     runId: run.runId,
     total: run.totalCitations,
+    trend: trendOf(i),
     ...run.modelCitations,
   }));
 
   const overallColor = "hsl(250, 50%, 40%)";
+  const trendColor = "hsl(0, 0%, 50%)";
   const chartConfig: ChartConfig = {
     total: { label: "Total citations", color: overallColor },
+    trend: { label: "Trend", color: trendColor },
   };
   for (const m of modelKeys) {
     chartConfig[m] = {
@@ -123,6 +145,18 @@ export function DomainTrendChart({ domain, model, runId, onSelectRun }: Props) {
             strokeWidth={2.5}
             dot={chartData.length <= 10}
           />
+          {n >= 2 && (
+            <Line
+              type="linear"
+              dataKey="trend"
+              stroke="var(--color-trend)"
+              strokeWidth={1.5}
+              strokeDasharray="4 4"
+              dot={false}
+              activeDot={false}
+              isAnimationActive={false}
+            />
+          )}
         </AreaChart>
       </ChartContainer>
     </div>
