@@ -82,7 +82,7 @@ n8n-nodes-traceaio/         # n8n community node package (standalone npm package
 browser-actor/              # Apify actor for browser-based prompt execution (gitignored)
 ```
 
-## API Routes (88 total)
+## API Routes (89 total)
 
 ```
 AUTH (12)        server/routes/auth.ts
@@ -136,13 +136,14 @@ RESPONSES (7)   server/routes/responses.ts
             /api/responses, /api/responses/:id
   POST      /api/prompts/test, /api/data/clear
 
-ANALYSIS (15)   server/routes/analysis.ts
+ANALYSIS (16)   server/routes/analysis.ts
   POST      /api/analyze-brand, /api/generate-prompts, /api/save-and-analyze,
             /api/analysis/start, /api/analysis/cancel, /api/test-analysis
   GET       /api/test, /api/analysis/runs, /api/analysis/failures,
             /api/analysis/jobs, /api/analysis/progress,
             /api/analysis/:sessionId/progress, /api/apify-usage, /api/usage,
             /api/export, /api/generate-topic-prompts
+  DELETE    /api/analysis/runs/:id
 
 SETTINGS (3)    server/routes/settings.ts
   GET       /api/settings/browser-status, /api/settings/:key

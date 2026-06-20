@@ -338,6 +338,35 @@ export function registerAnalysisRoutes(app: Express) {
     }
   });
 
+  // Delete a single analysis run and all data scoped to it (admin only).
+  // Other runs are untouched — see storage.deleteAnalysisRun.
+  app.delete("/api/analysis/runs/:id", requireRole("admin"), async (req, res) => {
+    // #swagger.tags = ['Analysis']
+    try {
+      const runId = parseInt(req.params.id, 10);
+      if (!Number.isInteger(runId)) {
+        return res.status(400).json({ error: "Invalid run id" });
+      }
+
+      const runs = await storage.getAnalysisRuns();
+      const run = runs.find(r => r.id === runId);
+      if (!run) {
+        return res.status(404).json({ error: "Run not found" });
+      }
+
+      // Refuse to delete a run that is still in progress — cancel it first.
+      if (run.status !== 'complete' && run.status !== 'error' && run.status !== 'cancelled') {
+        return res.status(409).json({ error: "Cannot delete a run that is still running. Cancel it first." });
+      }
+
+      await storage.deleteAnalysisRun(runId);
+      res.json({ success: true, deletedRunId: runId });
+    } catch (error) {
+      console.error("Error deleting analysis run:", error);
+      res.status(500).json({ error: "Failed to delete analysis run" });
+    }
+  });
+
   // Get failed jobs for the latest (or specific) analysis run
   app.get("/api/analysis/failures", requireRole("analyst"), async (req, res) => {
     // #swagger.tags = ['Analysis']

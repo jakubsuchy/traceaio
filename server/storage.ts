@@ -107,6 +107,7 @@ export interface IStorage {
   getAnalysisRuns(from?: Date, to?: Date): Promise<AnalysisRun[]>;
   getLatestAnalysisRun(): Promise<AnalysisRun | undefined>;
   updateAnalysisRunProgress(id: number, completedPrompts: number): Promise<void>;
+  deleteAnalysisRun(runId: number): Promise<void>;
 
   // Settings
   getSetting(key: string): Promise<string | null>;
@@ -517,6 +518,15 @@ export class MemStorage implements IStorage {
   async updateAnalysisRunProgress(id: number, completedPrompts: number): Promise<void> {
     const run = this.analysisRunsMap.get(id);
     if (run) run.completedPrompts = completedPrompts;
+  }
+
+  async deleteAnalysisRun(runId: number): Promise<void> {
+    // Remove only the data scoped to this run; leave other runs untouched.
+    for (const [id, resp] of Array.from(this.responses.entries())) {
+      if (resp.analysisRunId === runId) this.responses.delete(id);
+    }
+    this.competitorMentionsList = this.competitorMentionsList.filter(m => m.analysisRunId !== runId);
+    this.analysisRunsMap.delete(runId);
   }
 
   private settingsMap = new Map<string, string>();

@@ -4,9 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import {
   Activity,
   Clock,
@@ -22,6 +26,8 @@ import {
   ChevronRight,
   Monitor,
   Maximize2,
+  Trash2,
+  History,
 } from "lucide-react";
 
 interface AnalysisProgress {
@@ -274,8 +280,129 @@ export default function AnalysisProgressPage() {
         {/* Cost Overview */}
         <CostSummaryCard />
 
+        {/* Past runs */}
+        <RunsList />
+
       </div>
     </div>
+  );
+}
+
+interface AnalysisRunItem {
+  id: number;
+  startedAt: string | null;
+  completedAt: string | null;
+  status: string;
+  brandName: string | null;
+  brandUrl: string | null;
+  totalPrompts: number | null;
+  completedPrompts: number | null;
+  responseCount: number;
+}
+
+function RunsList() {
+  const { hasRole } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const isAdmin = hasRole('admin');
+
+  const { data: runs, isLoading } = useQuery<AnalysisRunItem[]>({
+    queryKey: ['/api/analysis/runs'],
+  });
+
+  const deleteRun = useMutation({
+    mutationFn: async (runId: number) => {
+      await apiRequest('DELETE', `/api/analysis/runs/${runId}`);
+    },
+    onSuccess: (_data, runId) => {
+      toast({ title: "Run deleted", description: `Run #${runId} and all of its data were removed.` });
+      // Refresh everything that derives from run data.
+      queryClient.invalidateQueries();
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete run. Please try again.", variant: "destructive" });
+    },
+  });
+
+  if (isLoading) return null;
+  if (!runs || runs.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <History className="h-5 w-5" />
+          Runs ({runs.length})
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        <Table>
+          <TableHeader>
+            <TableRow className="text-xs">
+              <TableHead className="w-12">#</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead>Brand</TableHead>
+              <TableHead className="text-right">Prompts</TableHead>
+              <TableHead className="text-right">Responses</TableHead>
+              {isAdmin && <TableHead className="w-16 text-right">Actions</TableHead>}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {runs.map(run => (
+              <TableRow key={run.id} className="text-sm">
+                <TableCell className="font-mono text-gray-400">{run.id}</TableCell>
+                <TableCell>
+                  {run.completedAt
+                    ? new Date(run.completedAt).toLocaleString()
+                    : run.startedAt
+                      ? new Date(run.startedAt).toLocaleString()
+                      : '-'}
+                </TableCell>
+                <TableCell className="text-gray-700">{run.brandName || '-'}</TableCell>
+                <TableCell className="text-right text-gray-600">{run.totalPrompts ?? '-'}</TableCell>
+                <TableCell className="text-right text-gray-600">{run.responseCount}</TableCell>
+                {isAdmin && (
+                  <TableCell className="text-right">
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-red-600 hover:bg-red-50 hover:text-red-700"
+                          disabled={deleteRun.isPending}
+                          title="Delete run"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete run #{run.id}?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This permanently deletes all data from this run — its {run.responseCount} responses,
+                            competitor mentions, cited sources, cost logs, and job history.
+                            Other runs are not affected. This cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => deleteRun.mutate(run.id)}
+                            className="bg-red-600 hover:bg-red-700"
+                          >
+                            Yes, delete this run
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </TableCell>
+                )}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   );
 }
 

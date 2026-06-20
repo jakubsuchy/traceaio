@@ -18,7 +18,7 @@ import {
 import { normalizeUrl, stripTrackingParams, parseHttpUrl } from "./services/analysis";
 import { extractUrlsFromText } from "./services/scraper";
 import { db } from "./db";
-import { eq, desc, count, sql, isNull, and, gte, lte, inArray } from "drizzle-orm";
+import { eq, desc, count, sql, isNull, and, or, gte, lte, inArray } from "drizzle-orm";
 import { IStorage, RecommendationDetectorOutput } from "./storage";
 
 export class DatabaseStorage implements IStorage {
@@ -697,6 +697,74 @@ export class DatabaseStorage implements IStorage {
 
   async updateAnalysisRunProgress(id: number, completedPrompts: number): Promise<void> {
     await db.update(analysisRuns).set({ completedPrompts }).where(eq(analysisRuns.id, id));
+  }
+
+  // Delete a single run and ONLY the data scoped to it. Every table that
+  // carries an analysis_run_id is pruned by that run id; rows belonging to
+  // other runs are never touched. Runs all the way through in one transaction
+  // so a failure leaves the run fully intact (no half-deleted state).
+  //
+  // Recommendations are cross-run aggregates that FK into analysis_runs via
+  // first/last/state-changed run-id columns, so they can't just be deleted by
+  // run id — they're repaired from their remaining per-run occurrences (or
+  // dropped if this run was their only evidence).
+  async deleteAnalysisRun(runId: number): Promise<void> {
+    await db.transaction(async (tx) => {
+      // Leaf rows scoped directly to the run. competitor_mentions reference
+      // responses, so they go before responses.
+      await tx.delete(competitorMentions).where(eq(competitorMentions.analysisRunId, runId));
+      await tx.delete(jobQueue).where(eq(jobQueue.analysisRunId, runId));
+      await tx.delete(sourceUrls).where(eq(sourceUrls.analysisRunId, runId));
+      await tx.delete(apiUsage).where(eq(apiUsage.analysisRunId, runId));
+      await tx.delete(apifyUsage).where(eq(apifyUsage.analysisRunId, runId));
+      await tx.delete(responses).where(eq(responses.analysisRunId, runId));
+
+      // Drop this run's recommendation occurrences, then repair any
+      // recommendation whose denormalized run pointers referenced this run.
+      await tx.delete(recommendationOccurrences).where(eq(recommendationOccurrences.analysisRunId, runId));
+
+      const affected = await tx
+        .select()
+        .from(recommendations)
+        .where(or(
+          eq(recommendations.firstSeenRunId, runId),
+          eq(recommendations.lastSeenRunId, runId),
+          eq(recommendations.stateChangedAtRunId, runId),
+        ));
+
+      for (const rec of affected) {
+        const occs = await tx
+          .select()
+          .from(recommendationOccurrences)
+          .where(eq(recommendationOccurrences.recommendationId, rec.id))
+          .orderBy(desc(recommendationOccurrences.analysisRunId));
+
+        if (occs.length === 0) {
+          // This run was the recommendation's only evidence — remove it.
+          await tx.delete(recommendations).where(eq(recommendations.id, rec.id));
+          continue;
+        }
+
+        const runIds = occs.map(o => o.analysisRunId);
+        const latest = occs[0]; // ordered by run id desc
+        await tx.update(recommendations).set({
+          firstSeenRunId: Math.min(...runIds),
+          lastSeenRunId: Math.max(...runIds),
+          totalOccurrences: occs.length,
+          // Re-denormalize the latest snapshot from the newest remaining run.
+          severity: latest.severity,
+          narrative: latest.narrative,
+          evidenceJson: latest.evidenceJson,
+          impactScore: latest.impactScore,
+          // The user's decision anchor pointed at the deleted run — fall back
+          // to the implicit first-seen anchor.
+          stateChangedAtRunId: rec.stateChangedAtRunId === runId ? null : rec.stateChangedAtRunId,
+          updatedAt: new Date(),
+        }).where(eq(recommendations.id, rec.id));
+      }
+
+      await tx.delete(analysisRuns).where(eq(analysisRuns.id, runId));
+    });
   }
 
   // Settings
