@@ -1304,11 +1304,43 @@ export class DatabaseStorage implements IStorage {
    * getWatchedUrls plus runId/model scoping on the citation side.
    */
   async getWatchedUrlsWithCitations(opts: { runId?: number; model?: string; source?: 'manual' | 'sitemap'; limit?: number; offset?: number } = {}): Promise<WatchedUrlWithCitations[]> {
-    const watched = await this.getWatchedUrls({ source: opts.source, limit: opts.limit, offset: opts.offset });
-    if (watched.length === 0) return [];
+    // Rank watched URLs by citation count (desc), newest-added as tiebreaker,
+    // and paginate the RANKED set — so "most-cited first" holds across pages,
+    // not just within one. The count must be computed in SQL (before
+    // limit/offset); doing it after pagination would only reorder a single
+    // date-ordered page. It uses the same per-row match column
+    // (normalized_url vs normalized_url_stripped) and run/model scoping as
+    // getWatchedUrlCitations, so the order agrees with the displayed counts.
+    // count(distinct (resp.id, su.url)) FILTER (resp.id IS NOT NULL) mirrors
+    // that method's selectDistinct over the response tuple (the other columns
+    // are functionally dependent on resp.id); the FILTER drops source_urls
+    // rows with no matching response, matching its INNER JOIN semantics.
+    const runFilter = opts.runId ? sql` AND su.analysis_run_id = ${opts.runId}` : sql``;
+    const modelFilter = opts.model ? sql` AND su.model = ${opts.model}` : sql``;
+    const sourceFilter = opts.source ? sql` WHERE w.source = ${opts.source}` : sql``;
+    const limitClause = opts.limit !== undefined ? sql` LIMIT ${opts.limit}` : sql``;
+    const offsetClause = opts.offset !== undefined ? sql` OFFSET ${opts.offset}` : sql``;
+
+    const result = await db.execute(sql`
+      SELECT w.id AS id
+      FROM watched_urls w
+      LEFT JOIN source_urls su
+        ON ((w.ignore_query_strings AND su.normalized_url_stripped = w.normalized_url)
+         OR (NOT w.ignore_query_strings AND su.normalized_url = w.normalized_url))${runFilter}${modelFilter}
+      LEFT JOIN responses resp
+        ON resp.analysis_run_id = su.analysis_run_id
+       AND resp.model = su.model
+       AND su.url = ANY(resp.sources)${sourceFilter}
+      GROUP BY w.id, w.added_at
+      ORDER BY count(DISTINCT (resp.id, su.url)) FILTER (WHERE resp.id IS NOT NULL) DESC,
+               w.added_at DESC, w.id DESC${limitClause}${offsetClause}
+    `);
+    const rows = (result as any).rows ?? result;
+    if (!rows || rows.length === 0) return [];
+
     const results: WatchedUrlWithCitations[] = [];
-    for (const w of watched) {
-      const single = await this.getWatchedUrlCitations(w.id, opts.runId, opts.model);
+    for (const r of rows as any[]) {
+      const single = await this.getWatchedUrlCitations(Number(r.id), opts.runId, opts.model);
       if (single) results.push(single);
     }
     return results;
