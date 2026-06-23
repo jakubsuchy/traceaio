@@ -2,6 +2,13 @@
 
 Track how your brand is mentioned across LLMs.
 
+## What's New
+
+- **2026-06-23 — Source Watchlist ranked by citations**: the Sources → Watchlist tab now lists watched URLs by citation count (most-cited first), honoring the active run/model filter so the order matches the counts shown.
+- **2026-06-19 — Delete individual runs**: admins can delete a single analysis run from the Analysis Progress page. It removes only that run's data (responses, citations, competitor mentions, cost logs, jobs) and leaves every other run intact.
+- **2026-05-28 — Domain citation trend line**: the Sources by Domain → Trends chart draws a linear regression trend line, so you can see at a glance whether a domain's citations are climbing or falling over time.
+- **2026-05-28 — Sources by Domain → Trends tab**: a per-run citation chart for each domain, showing how often it's cited run over run.
+
 Currently supported models:
 
 **Browser-based** (replays the real chat UI):
@@ -83,15 +90,6 @@ Included by default — the browser container starts with `docker compose up -d`
 Use [Apify](https://apify.com/?fpr=1lkb9a) for parallel execution with residential proxies. No anti-bot issues. Set your Apify token in Settings → Credentials.
 
 Switch between modes in Settings → Credentials → Browser Analysis Mode.
-
-## What's New
-
-Most recent additions:
-
-- **Source Watchlist ranked by citations** — the Sources → Watchlist tab now lists watched URLs by citation count (most-cited first), honoring the active run/model filter so the order matches the counts shown.
-- **Delete individual runs** — admins can delete a single analysis run from the Analysis Progress page. It removes only that run's data (responses, citations, competitor mentions, cost logs, jobs) and leaves every other run intact.
-- **Domain citation trend line** — the Sources by Domain → Trends chart draws a linear regression trend line, so you can see at a glance whether a domain's citations are climbing or falling over time.
-- **Sources by Domain → Trends tab** — a per-run citation chart for each domain, showing how often it's cited run over run.
 
 ## Features
 
