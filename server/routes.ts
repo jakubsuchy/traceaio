@@ -20,6 +20,29 @@ import { registerRecommendationRoutes } from "./routes/recommendations";
 // Re-export for scheduler
 export { launchAnalysis } from "./routes/helpers";
 
+// When LIVE_DEMO=1, block every data-mutating API request (POST/PUT/PATCH/
+// DELETE) so the public demo is read-only. The auth lifecycle is allow-listed
+// so visitors can still log in/out. Registered before all routes so it's
+// deterministic regardless of route order; the client shows a "Deploy your
+// own" modal, this is the hard server-side guarantee behind it.
+const LIVE_DEMO_ALLOW: { method: string; path: RegExp }[] = [
+  { method: "POST", path: /^\/api\/auth\/login$/ },
+  { method: "POST", path: /^\/api\/auth\/logout$/ },
+];
+function registerLiveDemoGuard(app: Express) {
+  app.use("/api", (req, res, next) => {
+    if (process.env.LIVE_DEMO !== "1") return next();
+    const method = req.method.toUpperCase();
+    if (method === "GET" || method === "HEAD" || method === "OPTIONS") return next();
+    const path = req.originalUrl.split("?")[0];
+    if (LIVE_DEMO_ALLOW.some(a => a.method === method && a.path.test(path))) return next();
+    return res.status(403).json({
+      error: "live_demo",
+      message: "This is a live demo. Deploy your own to make changes.",
+    });
+  });
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Load persisted brand name from DB
   await loadBrandName();
@@ -31,6 +54,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   } catch (error) {
     console.error('[STARTUP] Failed to load settings from DB:', error);
   }
+
+  // --- Live demo guard (read-only mode) — before everything else ---
+  registerLiveDemoGuard(app);
 
   // --- Public routes (before auth guard) ---
   registerAuthRoutes(app);

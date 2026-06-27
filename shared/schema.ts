@@ -64,14 +64,15 @@ export const sourceUniqueUrls = pgTable("source_unique_urls", {
   // (casing, trailing slash, tracking params) collapse onto one row. Identity
   // is `normalized_url`, the canonical form from normalizeUrl().
   url: text("url").notNull(),
-  normalizedUrl: text("normalized_url").notNull(),
+  // Kept nullable + non-unique HERE on purpose. The real uniqueness guard is
+  // the index `source_unique_urls_normalized_url_key`, created by the startup
+  // merge backfill (backfillSourceUniqueUrls) AFTER it dedups legacy rows.
+  // If this were declared NOT NULL/unique, `drizzle-kit push` (which runs
+  // before the app boots in the Docker CMD) would try to enforce it on dirty
+  // data and fail, blocking startup before the backfill could clean it.
+  normalizedUrl: text("normalized_url"),
   firstSeenAt: timestamp("first_seen_at").defaultNow(),
-}, (t) => ({
-  // One page row per canonical URL. Backs ON CONFLICT in addSourceUrls so
-  // concurrent workers can't create duplicate page rows. The merge backfill
-  // creates this same index by name before it's relied upon.
-  normalizedUrlUnique: uniqueIndex("source_unique_urls_normalized_url_key").on(t.normalizedUrl),
-}));
+});
 
 export const sourceUrls = pgTable("source_urls", {
   id: serial("id").primaryKey(),

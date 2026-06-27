@@ -6,6 +6,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import Layout from "@/components/layout";
+import LiveDemoBanner from "@/components/live-demo-banner";
+import LiveDemoProvider from "@/components/live-demo-provider";
 import Dashboard from "@/pages/dashboard";
 import PromptGeneratorPage from "@/pages/prompt-generator";
 import ResponsesPage from "@/pages/responses";
@@ -104,8 +106,15 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <TooltipProvider>
-          <Toaster />
-          <Router />
+          <LiveDemoProvider>
+            <Toaster />
+            <div className="flex flex-col h-screen">
+              <LiveDemoBanner />
+              <div className="flex-1 min-h-0">
+                <Router />
+              </div>
+            </div>
+          </LiveDemoProvider>
         </TooltipProvider>
       </AuthProvider>
     </QueryClientProvider>

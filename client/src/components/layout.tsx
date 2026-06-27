@@ -10,7 +10,7 @@ export default function Layout({ children }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-full bg-gray-50">
       {/* Mobile hamburger */}
       <button
         onClick={() => setSidebarOpen(true)}

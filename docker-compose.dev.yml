@@ -10,3 +10,5 @@ services:
   app:
     build: .
     image: !reset null
+    environment:
+      LIVE_DEMO: "1"

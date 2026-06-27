@@ -4,6 +4,7 @@ import type {
   ToastActionElement,
   ToastProps,
 } from "@/components/ui/toast"
+import { shouldSuppressToast } from "@/lib/live-demo"
 
 const TOAST_LIMIT = 1
 const TOAST_REMOVE_DELAY = 5000
@@ -140,6 +141,13 @@ function dispatch(action: Action) {
 type Toast = Omit<ToasterToast, "id">
 
 function toast({ ...props }: Toast) {
+  // In Live Demo mode, a blocked mutation opens the "Deploy your own" modal;
+  // swallow the follow-on "Failed to …" toasts that callers' error handlers fire.
+  if (shouldSuppressToast()) {
+    const id = genId()
+    return { id, dismiss: () => {}, update: () => {} }
+  }
+
   const id = genId()
 
   const update = (props: ToasterToast) =>

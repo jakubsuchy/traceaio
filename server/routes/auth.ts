@@ -28,6 +28,15 @@ export function registerAuthRoutes(app: Express) {
     });
   });
 
+  // Public, unauthenticated client config. Exposes only non-sensitive flags
+  // the UI needs before (and without) a session — e.g. the Live Demo banner.
+  app.get("/api/public-config", async (_req, res) => {
+    // #swagger.tags = ['Auth']
+    res.json({
+      liveDemo: process.env.LIVE_DEMO === '1',
+    });
+  });
+
   app.get("/api/auth/session", async (req, res) => {
     // #swagger.tags = ['Auth']
     if (req.isAuthenticated()) {
