@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { parseDateRange, getSourceBlacklist, requireRole } from "./helpers";
 import { storage } from "../storage";
-import { parseHttpUrl } from "../services/analysis";
+import { parseHttpUrl, normalizeUrl } from "../services/analysis";
 import { buildSourceClassifier } from "./sources";
 
 // Page-level routes (per-URL view of citation data). Distinct from the
@@ -42,6 +42,11 @@ export function registerPageRoutes(app: Express) {
       if (model) responses = responses.filter(r => r.model === model);
       if (topicId) responses = responses.filter(r => r.prompt?.topicId === topicId);
 
+      // Aggregate by the *normalized* URL so variants that differ only by
+      // casing, trailing slash, or tracking params collapse onto one page row
+      // (e.g. `https://Monday.com`, `https://monday.com/`, `https://monday.com`).
+      // The normalized form is also the display URL and the key the page-id
+      // lookup uses, keeping list/detail/deep-link consistent.
       const counts = new Map<string, { url: string; domain: string; count: number }>();
       for (const r of responses) {
         if (!r.sources || r.sources.length === 0) continue;
@@ -51,7 +56,7 @@ export function registerPageRoutes(app: Express) {
           if (typeof raw !== 'string') continue;
           const parsed = parseHttpUrl(raw);
           if (!parsed) continue;
-          const url = raw.trim();
+          const url = normalizeUrl(raw);
           if (seen.has(url)) continue;
           seen.add(url);
           const domain = parsed.hostname.replace(/^www\./, '').toLowerCase();
@@ -108,7 +113,7 @@ export function registerPageRoutes(app: Express) {
       const { sourceUniqueUrls } = await import("@shared/schema");
       const { eq } = await import("drizzle-orm");
       const [row] = await db
-        .select({ id: sourceUniqueUrls.id, url: sourceUniqueUrls.url })
+        .select({ id: sourceUniqueUrls.id, url: sourceUniqueUrls.url, normalizedUrl: sourceUniqueUrls.normalizedUrl })
         .from(sourceUniqueUrls)
         .where(eq(sourceUniqueUrls.id, pageId));
       if (!row) return res.status(404).json({ error: "Page not found" });
@@ -116,6 +121,8 @@ export function registerPageRoutes(app: Express) {
       const parsed = parseHttpUrl(row.url);
       if (!parsed) return res.status(404).json({ error: "Invalid URL on record" });
       const domain = parsed.hostname.replace(/^www\./, '').toLowerCase();
+      // Fall back to computing it if a legacy row somehow lacks normalized_url.
+      const targetNorm = row.normalizedUrl || normalizeUrl(row.url);
 
       const blacklist = await getSourceBlacklist();
       if (blacklist.has(domain)) return res.status(404).json({ error: "Page is on the source blacklist" });
@@ -124,15 +131,16 @@ export function registerPageRoutes(app: Express) {
       const model = (req.query.model || req.query.provider) as string | undefined;
       let allResponses = await storage.getResponsesWithPrompts(runId);
       if (model) allResponses = allResponses.filter(r => r.model === model);
+      // Match by normalized URL so all citation variants of this page count.
       const citationCount = allResponses.reduce(
-        (acc, r) => acc + (r.sources && r.sources.some(s => s === row.url) ? 1 : 0),
+        (acc, r) => acc + (r.sources && r.sources.some(s => typeof s === 'string' && normalizeUrl(s) === targetNorm) ? 1 : 0),
         0,
       );
 
       const { classifyDomain } = await buildSourceClassifier();
       res.json({
         pageId: row.id,
-        url: row.url,
+        url: targetNorm,
         domain,
         sourceType: classifyDomain(domain),
         citationCount,
@@ -158,13 +166,14 @@ export function registerPageRoutes(app: Express) {
       if (!parseHttpUrl(rawUrl)) {
         return res.status(400).json({ error: "url must be a valid http(s) URL" });
       }
-      const url = rawUrl.trim();
+      const targetNorm = normalizeUrl(rawUrl);
       const runId = req.query.runId ? parseInt(req.query.runId as string) : undefined;
       const model = (req.query.model || req.query.provider) as string | undefined;
       let allResponses = await storage.getResponsesWithPrompts(runId);
       if (model) allResponses = allResponses.filter(r => r.model === model);
+      // Match by normalized URL so all citation variants of this page are found.
       const matching = allResponses.filter(r =>
-        r.sources && r.sources.some(s => s === url)
+        r.sources && r.sources.some(s => typeof s === 'string' && normalizeUrl(s) === targetNorm)
       );
       res.json(matching);
     } catch (error) {

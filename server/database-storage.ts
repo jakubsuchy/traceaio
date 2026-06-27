@@ -144,38 +144,93 @@ export class DatabaseStorage implements IStorage {
   }
 
   /**
-   * One-time backfill: ensures every distinct citation URL has a row in
-   * source_unique_urls and that every source_urls row links to it via
-   * source_unique_url_id. Idempotent — safe to call on every startup.
+   * One-time backfill: ensures every distinct citation URL has exactly one row
+   * in source_unique_urls keyed on its *normalized* URL, and that every
+   * source_urls row links to it via source_unique_url_id. This both seeds new
+   * page rows AND merges legacy duplicates that pre-date normalized-keyed
+   * dedup (e.g. `Monday.com`, `monday.com/`, `monday.com` were three rows).
+   * Idempotent — safe to call on every startup.
    */
   async backfillSourceUniqueUrls(): Promise<void> {
-    // 1. Insert distinct URLs that don't yet have a source_unique_urls row.
-    //    Done in a single SQL so it's fast on first run but cheap afterward
-    //    (the NOT EXISTS prunes already-mapped URLs).
+    // 1. Fill normalized_url on any legacy page rows that lack it. Computed in
+    //    JS since normalizeUrl() isn't expressible in SQL. Rare — the write
+    //    path has always set it; only pre-column rows hit this.
+    const nullNorm = await db
+      .select({ id: sourceUniqueUrls.id, url: sourceUniqueUrls.url })
+      .from(sourceUniqueUrls)
+      .where(isNull(sourceUniqueUrls.normalizedUrl));
+    for (const row of nullNorm) {
+      await db
+        .update(sourceUniqueUrls)
+        .set({ normalizedUrl: normalizeUrl(row.url) })
+        .where(eq(sourceUniqueUrls.id, row.id));
+    }
+
+    // 2. Merge duplicate page rows sharing a normalized_url. Keep the lowest
+    //    id as canonical, repoint source_urls FKs onto it, then delete the
+    //    dupes. Repoint-before-delete avoids any FK violation.
+    const repointed = await db.execute(sql`
+      WITH canonical AS (
+        SELECT normalized_url, MIN(id) AS keep_id
+        FROM source_unique_urls
+        GROUP BY normalized_url
+        HAVING COUNT(*) > 1
+      )
+      UPDATE source_urls su
+      SET source_unique_url_id = c.keep_id
+      FROM source_unique_urls dup
+      JOIN canonical c ON c.normalized_url = dup.normalized_url
+      WHERE su.source_unique_url_id = dup.id AND dup.id <> c.keep_id
+    `);
+    const mergedFkCount = (repointed as any).rowCount ?? 0;
+    const removed = await db.execute(sql`
+      DELETE FROM source_unique_urls dup
+      USING (
+        SELECT normalized_url, MIN(id) AS keep_id
+        FROM source_unique_urls
+        GROUP BY normalized_url
+      ) c
+      WHERE dup.normalized_url = c.normalized_url AND dup.id <> c.keep_id
+    `);
+    const removedCount = (removed as any).rowCount ?? 0;
+
+    // 3. Now that the table is duplicate-free, enforce uniqueness at the DB
+    //    level so concurrent writers can ON CONFLICT (normalized_url). The
+    //    name matches the index declared in shared/schema.ts. Idempotent.
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS source_unique_urls_normalized_url_key
+      ON source_unique_urls (normalized_url)
+    `);
+
+    // 4. Insert canonical rows for citation URLs that have no page row yet,
+    //    keyed on normalized_url. Representative url/first_seen via MIN.
     const inserted = await db.execute(sql`
       INSERT INTO source_unique_urls (url, normalized_url, first_seen_at)
-      SELECT su.url, MIN(su.normalized_url), MIN(su.first_seen_at)
+      SELECT MIN(su.url), su.normalized_url, MIN(su.first_seen_at)
       FROM source_urls su
-      WHERE NOT EXISTS (
-        SELECT 1 FROM source_unique_urls sou WHERE sou.url = su.url
-      )
-      GROUP BY su.url
-      ON CONFLICT (url) DO NOTHING
+      WHERE su.normalized_url IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM source_unique_urls sou WHERE sou.normalized_url = su.normalized_url
+        )
+      GROUP BY su.normalized_url
+      ON CONFLICT (normalized_url) DO NOTHING
       RETURNING id
     `);
     const insertedCount = (inserted as any).rowCount ?? (inserted as any).rows?.length ?? 0;
 
-    // 2. Backfill source_urls.source_unique_url_id for any rows still NULL.
+    // 5. (Re)link source_urls.source_unique_url_id by normalized_url. Self-heals
+    //    NULL or stale links; a no-op once everything points to canonical.
     const linked = await db.execute(sql`
       UPDATE source_urls su
       SET source_unique_url_id = sou.id
       FROM source_unique_urls sou
-      WHERE su.source_unique_url_id IS NULL AND su.url = sou.url
+      WHERE su.normalized_url = sou.normalized_url
+        AND (su.source_unique_url_id IS NULL OR su.source_unique_url_id <> sou.id)
     `);
     const linkedCount = (linked as any).rowCount ?? 0;
 
-    if (insertedCount > 0 || linkedCount > 0) {
-      console.log(`[backfill] source_unique_urls: inserted ${insertedCount}, linked ${linkedCount} source_urls rows.`);
+    if (nullNorm.length > 0 || removedCount > 0 || insertedCount > 0 || linkedCount > 0) {
+      console.log(`[backfill] source_unique_urls: normalized ${nullNorm.length} legacy rows, merged ${removedCount} dupes (repointed ${mergedFkCount} FKs), inserted ${insertedCount}, linked ${linkedCount} source_urls rows.`);
     }
   }
 
@@ -555,20 +610,22 @@ export class DatabaseStorage implements IStorage {
     if (!source) return;
     for (const url of urls) {
       const normalized = normalizeUrl(url);
-      // Upsert into source_unique_urls so every distinct citation URL has a
-      // stable id. Insert returns the id when new; on conflict we have to
-      // fetch (Postgres only returns RETURNING for affected rows).
+      // Upsert into source_unique_urls keyed on the *normalized* URL so every
+      // canonical page has exactly one stable id — variants that differ only by
+      // casing, trailing slash, or tracking params collapse onto one row.
+      // Insert returns the id when new; on conflict we fetch by normalized_url
+      // (Postgres only returns RETURNING for affected rows).
       const [uniqueRow] = await db
         .insert(sourceUniqueUrls)
         .values({ url, normalizedUrl: normalized })
-        .onConflictDoNothing()
+        .onConflictDoNothing({ target: sourceUniqueUrls.normalizedUrl })
         .returning({ id: sourceUniqueUrls.id });
       let sourceUniqueUrlId: number | null = uniqueRow?.id ?? null;
       if (sourceUniqueUrlId === null) {
         const [existing] = await db
           .select({ id: sourceUniqueUrls.id })
           .from(sourceUniqueUrls)
-          .where(eq(sourceUniqueUrls.url, url));
+          .where(eq(sourceUniqueUrls.normalizedUrl, normalized));
         sourceUniqueUrlId = existing?.id ?? null;
       }
       await db.insert(sourceUrls).values({
@@ -596,17 +653,24 @@ export class DatabaseStorage implements IStorage {
       .select({ url: sourceUrls.url })
       .from(sourceUrls)
       .where(condition);
-    // Deduplicate
-    return [...new Set(rows.map(r => r.url))];
+    // Deduplicate by canonical (normalized) URL so casing / trailing-slash /
+    // tracking-param variants collapse to one entry. The returned values are
+    // the normalized forms, which also match getPageIdsForUrls' lookup key.
+    return [...new Set(rows.map(r => normalizeUrl(r.url)))];
   }
 
-  async getPageIdsForUrls(urls: string[]): Promise<Map<string, number>> {
-    if (urls.length === 0) return new Map();
+  /**
+   * Map a set of *normalized* URLs to their stable source_unique_urls id.
+   * Callers (the Source Pages endpoints) aggregate citations by normalized URL,
+   * so the lookup and the returned map are both keyed on normalized_url.
+   */
+  async getPageIdsForUrls(normalizedUrls: string[]): Promise<Map<string, number>> {
+    if (normalizedUrls.length === 0) return new Map();
     const rows = await db
-      .select({ id: sourceUniqueUrls.id, url: sourceUniqueUrls.url })
+      .select({ id: sourceUniqueUrls.id, normalizedUrl: sourceUniqueUrls.normalizedUrl })
       .from(sourceUniqueUrls)
-      .where(inArray(sourceUniqueUrls.url, urls));
-    return new Map(rows.map(r => [r.url, r.id]));
+      .where(inArray(sourceUniqueUrls.normalizedUrl, normalizedUrls));
+    return new Map(rows.map(r => [r.normalizedUrl, r.id]));
   }
 
 

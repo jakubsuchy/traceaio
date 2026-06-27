@@ -60,10 +60,18 @@ export const sources = pgTable("sources", {
 // addSourceUrls insert upserts here too so the two stay in sync.
 export const sourceUniqueUrls = pgTable("source_unique_urls", {
   id: serial("id").primaryKey(),
-  url: text("url").notNull().unique(),
-  normalizedUrl: text("normalized_url"),
+  // Representative/display URL for the page. No longer unique — many raw URLs
+  // (casing, trailing slash, tracking params) collapse onto one row. Identity
+  // is `normalized_url`, the canonical form from normalizeUrl().
+  url: text("url").notNull(),
+  normalizedUrl: text("normalized_url").notNull(),
   firstSeenAt: timestamp("first_seen_at").defaultNow(),
-});
+}, (t) => ({
+  // One page row per canonical URL. Backs ON CONFLICT in addSourceUrls so
+  // concurrent workers can't create duplicate page rows. The merge backfill
+  // creates this same index by name before it's relied upon.
+  normalizedUrlUnique: uniqueIndex("source_unique_urls_normalized_url_key").on(t.normalizedUrl),
+}));
 
 export const sourceUrls = pgTable("source_urls", {
   id: serial("id").primaryKey(),

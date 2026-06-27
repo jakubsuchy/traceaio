@@ -91,10 +91,11 @@ export interface IStorage {
   getSourceByDomain(domain: string): Promise<Source | undefined>;
   updateSourceCitationCount(domain: string, increment: number): Promise<void>;
   addSourceUrls(domain: string, urls: string[], analysisRunId?: number, model?: string): Promise<void>;
+  // Returns distinct citation URLs for a domain in *normalized* (canonical) form.
   getSourceUrlsBySourceId(sourceId: number, analysisRunId?: number, model?: string): Promise<string[]>;
-  // Returns Map<url, source_unique_urls.id> for the given URL list. Used by
-  // the Source Pages routes to attach a stable pageId to each row/URL.
-  getPageIdsForUrls(urls: string[]): Promise<Map<string, number>>;
+  // Returns Map<normalizedUrl, source_unique_urls.id> for the given normalized
+  // URL list. Used by the Source Pages routes to attach a stable pageId.
+  getPageIdsForUrls(normalizedUrls: string[]): Promise<Map<string, number>>;
 
   // Competitor mentions
   createCompetitorMention(mention: InsertCompetitorMention): Promise<void>;
