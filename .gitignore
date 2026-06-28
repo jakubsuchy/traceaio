@@ -8,3 +8,6 @@ browser-actor/
 k8s/
 server/swagger-output.json
 public/docs/
+
+# Database backup dumps
+backups/
