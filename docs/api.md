@@ -20,8 +20,19 @@ Generate an API key from the sidebar MCP dialog, or via `POST /api/users/:id/api
 |--------|------|-------------|
 | GET | `/api/auth/needs-setup` | Check if first-run setup is needed |
 | GET | `/api/auth/session` | Get current session info |
+| GET | `/api/public-config` | Public, unauthenticated client config (e.g. the `liveDemo` flag) |
 | POST | `/api/auth/login` | Login with email/password |
 | POST | `/api/auth/logout` | End session |
+
+`/api/public-config` and `/api/auth/*` are the only endpoints that do **not** require authentication.
+
+## Live Demo mode
+
+When the server is started with `LIVE_DEMO=1`, the instance runs read-only: every
+data-mutating request (`POST`/`PUT`/`PATCH`/`DELETE`) under `/api/*` is rejected with
+`403 { "error": "live_demo" }`. Only `POST /api/auth/login` and `POST /api/auth/logout`
+remain writable. `GET /api/public-config` returns `{ "liveDemo": true }` so clients can
+surface the read-only state. All read (`GET`) endpoints behave normally.
 
 ### Metrics
 | Method | Path | Description |

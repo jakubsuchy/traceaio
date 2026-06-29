@@ -28,6 +28,20 @@ export default function LoginPage() {
     retry: false,
   });
 
+  const { data: publicConfig } = useQuery<{ liveDemo: boolean }>({
+    queryKey: ['/api/public-config'],
+  });
+  const liveDemo = !!publicConfig?.liveDemo;
+
+  // In demo mode, pre-fill the demo credentials so visitors can sign in in one
+  // click. Runs once when the flag resolves; the user can still edit the fields.
+  useEffect(() => {
+    if (liveDemo) {
+      setEmail("admin@example.com");
+      setPassword("adminadmin");
+    }
+  }, [liveDemo]);
+
   useEffect(() => {
     if (setupData?.needsSetup) {
       setLocation("/initialize");
@@ -79,6 +93,13 @@ export default function LoginPage() {
           <p className="text-sm text-gray-600 mt-1">Enter your credentials to continue</p>
         </CardHeader>
         <CardContent className="space-y-4">
+          {liveDemo && (
+            <div className="rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-sm text-indigo-900">
+              Welcome to the live demo of TraceAIO. Please login with username{" "}
+              <span className="font-semibold">admin@example.com</span>, password{" "}
+              <span className="font-semibold">adminadmin</span>.
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
@@ -96,7 +117,7 @@ export default function LoginPage() {
               <Label htmlFor="password">Password</Label>
               <Input
                 id="password"
-                type="password"
+                type={liveDemo ? "text" : "password"}
                 placeholder="Enter your password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

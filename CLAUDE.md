@@ -82,12 +82,13 @@ n8n-nodes-traceaio/         # n8n community node package (standalone npm package
 browser-actor/              # Apify actor for browser-based prompt execution (gitignored)
 ```
 
-## API Routes (89 total)
+## API Routes (90 total)
 
 ```
-AUTH (12)        server/routes/auth.ts
+AUTH (13)        server/routes/auth.ts
   GET/POST  /api/auth/session, /login, /logout, /needs-setup
   GET       /api/auth/google, /google/callback, /saml, /saml/callback, /saml/metadata
+  GET       /api/public-config  (unauthenticated — exposes liveDemo flag)
   POST      /api/initialize, /api/auth/providers (GET+POST)
 
 USERS (7)       server/routes/users.ts

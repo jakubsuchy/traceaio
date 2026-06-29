@@ -134,15 +134,27 @@
 <section class="demo-section" id="demo">
   <div class="container">
     <div class="section-label reveal">// live demo</div>
-    <h2 class="reveal reveal-delay-1">See it working</h2>
-    <p class="reveal reveal-delay-2">Interactive walkthrough of the dashboard, prompt generator, and analysis pipeline.</p>
-    <div class="demo-frame reveal reveal-delay-3">
-      <iframe
-        src="https://capture.navattic.com/cmntoj7ai000a04jz18ms5xlu"
-        data-navattic-demo-id="cmntoj7ai000a04jz18ms5xlu"
-        allow="fullscreen"
-        loading="lazy"
-      ></iframe>
+    <h2 class="reveal reveal-delay-1">Try the live demo</h2>
+    <p class="reveal reveal-delay-2">A real, running TraceAIO instance loaded with sample data — explore the dashboard, prompts, competitors, and sources. No signup required.</p>
+
+    <div class="demo-launch reveal reveal-delay-2">
+      <a href="https://demo.traceaio.org" target="_blank" rel="noopener" class="btn btn-primary btn-lg">
+        Launch the live demo
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+      <span class="demo-creds">Log in with <strong>admin@example.com</strong> / <strong>adminadmin</strong></span>
+    </div>
+
+    <a href="https://demo.traceaio.org" target="_blank" rel="noopener" class="demo-shot demo-shot-main reveal reveal-delay-3" aria-label="Open the live demo dashboard">
+      <img src="images/demo-dashboard.png" alt="TraceAIO dashboard showing brand visibility score, top competitor, sources found, and a visibility trend chart" loading="lazy">
+    </a>
+    <div class="demo-gallery reveal reveal-delay-3">
+      <a href="https://demo.traceaio.org" target="_blank" rel="noopener" class="demo-shot" aria-label="Open the live demo prompts view">
+        <img src="images/demo-prompts.png" alt="Prompts view ranking brand-mention performance per prompt and per model" loading="lazy">
+      </a>
+      <a href="https://demo.traceaio.org" target="_blank" rel="noopener" class="demo-shot" aria-label="Open the live demo source domains view">
+        <img src="images/demo-sources.png" alt="Source domains view showing which domains influence your queries" loading="lazy">
+      </a>
     </div>
   </div>
 </section>
@@ -404,7 +416,7 @@ Then open <span class="str">http://localhost:3000</span></code>
       <a href="/best-alternative-to-profound.html">vs Profound</a>
       <a href="https://github.com/jakubsuchy/traceaio" target="_blank">GitHub</a>
       <a href="https://github.com/jakubsuchy/traceaio/blob/main/LICENSE" target="_blank">Apache 2.0</a>
-      <a href="https://all-things-demo.navattic.com/lzr0zwm" target="_blank">Interactive Demo</a>
+      <a href="https://demo.traceaio.org" target="_blank" rel="noopener">Live Demo</a>
     </div>
   </div>
 </footer>
